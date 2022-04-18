@@ -1,0 +1,662 @@
+---
+title: "Projet 7 Effectuez une prédiction de revenus"
+author: "Arthur Kiehl"
+date: "23/10/2021"
+output: html_document
+---
+```{r package, message=FALSE, warning=FALSE}
+library(questionr)
+library(GGally)
+library(funModeling)
+library(tidyverse)
+library(dplyr)
+library(visdat)
+library(ggplot2)
+library(plotly)
+library(ineq)
+```
+
+
+```{r Data, include=FALSE}
+# importation donnée & mise en forme 
+library(dplyr)
+
+df <- read.table("data-projet7.csv",header = T, sep = ',',dec = ',')
+
+Gini <- read.csv2("Gini_2.csv", header = T, sep=",", na.strings = "..", dec = ".") 
+Gini <- Gini[,c(-1,-2)] 
+colnames(Gini) <- c("country_name","country","gini_2004","gini_2005","gini_2006","gini_2007","gini_2008","gini_2009","gini_2010","gini_2011")
+Gini <- left_join(select(df, country),Gini)  # on ne garde que les pays du df
+Gini <- unique(Gini)
+rownames(Gini) = 1:116
+
+population <- read.csv2("population_world_bank.csv", header = T,sep = ",", na.strings = "..", dec = ".")
+population <- na.omit(population)  # suppression NA
+population <-population[,c(-3,-4)]
+colnames(population) <- c("country_name","country","pop_2004","pop_2005","pop_2006","pop_2007","pop_2008","pop_2009","pop_20010","pop_2011") # rename
+
+population <- left_join(select(df, country),population) # left_join : on garde uniquement les pays dans le df d'analyse : clé = country
+population <- unique(population)
+rownames(population) = 1:116
+ 
+```
+
+
+
+```{r donnée manquante}
+
+# Exploration données manquantes 
+library(visdat)
+
+vis_miss(population) # Donnée manquante = TWN = Taiwan, 100 lignes  >>>>>> Imputation ?
+
+# Taiwan 
+# Sources: 
+# GINI https://www.statista.com/statistics/922574/taiwan-gini-index/
+# population : https://www.macrotrends.net/countries/TWN/taiwan/population
+
+# Gini Taiwan
+# 2004 	0.338
+# 2005 	0.340
+# 2006 	0.339
+# 2007 	0.340
+# 2008 	0.341
+# 2009 	0.345
+# 2010 	0.342
+# 2011 	0.342 
+
+
+Taiwan_vector <- c("TWN","Taiwan","33.8","34.0","33.9","34.0","34.1","34.5","34.2","34.2")
+Taiwan_pop <- c("TWN","Taiwan","22570224","22705713","22823848","22927215","23019045","23104546","23187551","23268765") 
+
+Gini[105,] = Taiwan_vector
+population[105,] = Taiwan_pop
+
+
+# df[cols] <- lapply(df[cols], function(x) as.numeric(as.character(x)))
+
+Gini[,3:10] <- lapply(Gini[,3:10], function(x) as.numeric(as.character(x)))
+population[,3:10] <- lapply(population[,3:10],function(x) as.numeric(as.character(x)))
+
+```
+
+## MISSION 1 
+
+
+Résumez les données utilisées :
+
+#### année(s) des données utilisées ; 2004 à 2011 (aucune donnée pour 2005)
+
+####  nombre de pays présents ; 116 pays 
+
+####  population couverte par l'analyse (en termes de pourcentage de la population mondiale). Près de 92 % de la population mondiale de 2004 à 2011
+
+###De quel type de quantiles s'agit-il (quartiles, déciles, etc.) ?
+Échantillonner une population en utilisant des quantiles est-il selon vous une bonne méthode ? Pourquoi ?
+
+Il s'agit de de percentile 
+
+```{r}
+# Exemple FRA revenu/income en fonction des quantiles
+ggplot(filter(df, country=="FRA"))+
+  aes(x=quantile,y=income) +
+  geom_point() +
+  ggtitle("Ecart des revenus en France en 2008")+
+  ylab("revenu") 
+
+# On voit ici que les Percentiles (100 quantiles) donne une vision claire des écarts de revenu dans un pays donné
+# La France a une variation de revenu homogène jusqu'à un certain point ~ 80% les plus riches augmentent de façon quasi exponantiel.
+
+```
+
+#### PPP correspond à la PPA c'est à dire un indicateur de parité de pouvoir d'achat, il s'agit de comparer les pays avec une même devise fictive pour corriger les différences de pouvoir d'achat entre pays.
+
+
+## MISSION 2
+
+Montrez la diversité des pays en termes de distribution de revenus à l'aide d'un graphique. Celui-ci représentera le revenu moyen (axe des ordonnées, sur une échelle logarithmique) de chacune des classes de revenus (axe des abscisses) pour 5 à 10 pays que vous aurez choisis pour montrer la diversité des cas.
+
+```{r}
+# On choisit nos pays en regardant les moyennes de revenus
+
+mean_income <- aggregate(income ~ country , data = df , FUN = mean)
+
+# on cherche les quartiles 
+
+summary(mean_income$income)
+
+```
+
+```{r}
+plot_m2 <- filter(df, country== "ISL"|country=="FRA"|country=="GRC"|country=="RUS"|country=="TUR"|country=="PER"|country=="VNM"|country=="COD")
+
+## Réordonnancement de plot_m2$country
+plot_m2$country <- factor(plot_m2$country,
+  levels = c("ISL", "FRA", "GRC", "RUS", "TUR", "PER", "VNM", "COD")
+)
+  
+plot_log <- ggplot(plot_m2) +
+  aes(x=quantile , y= log(income) , fill = country) +
+  geom_point(aes(color = country)) +
+  ggtitle("Distribution du revenu",subtitle = "lecture: des revenus inégalitaires se traduisent par un courbe pentue,
+          Le Congo est plus pauvre et plus inégalitaire que la France") +
+  xlab("")+
+  ylab("")
+
+ggplotly(plot_log)
+
+```
+
+Représentez la courbe de Lorenz de chacun des pays choisis.
+
+```{r courbe de Lorenz}
+h1 <- plot_m2 %>% filter(country =="ISL") 
+h2 <- plot_m2 %>% filter(country=="FRA")
+h3 <- plot_m2 %>% filter(country=="GRC")
+h4 <- plot_m2 %>% filter(country=="RUS")
+h5 <- plot_m2 %>% filter(country=="TUR")
+h6 <- plot_m2 %>% filter(country=="PER")
+h7 <- plot_m2 %>% filter(country=="VNM")
+h8 <- plot_m2 %>% filter(country=="COD")
+
+p1 <-plot(Lc(h1$income), main ="Islande", sub ="indice de Gini =0.31")
+p2 <-plot(Lc(h2$income), main ="France", sub ="indice de Gini =0.33")
+p3 <- plot(Lc(h3$income), main ="Grèce", sub ="indice de Gini =0.33")
+p4 <- plot(Lc(h4$income), main ="Russie", sub ="indice de Gini =0.41")
+p5 <- plot(Lc(h5$income), main ="Turquie", sub ="indice de Gini =0.39")
+p6 <- plot(Lc(h6$income), main ="Pérou", sub ="indice de Gini =0.47")
+p7 <-  plot(Lc(h7$income), main ="Vietnam", sub ="indice de Gini =0.36")
+p8 <- plot(Lc(h8$income), main ="Congo", sub ="indice de Gini 2004 =0.42")
+```
+Pour chacun de ces pays, représentez l'évolution de l'indice de Gini au fil des ans.
+
+```{r evolution indice de gini}
+Gini2 <- Gini %>% gather(key="country_name",value = new,gini_2004,gini_2005,gini_2006,gini_2007,gini_2008,gini_2009,gini_2010,gini_2011) 
+colnames(Gini2) <- c("country","year","indice")
+
+## Recodage de Gini2$year
+Gini2$year <- fct_recode(Gini2$year,
+  "2004" = "gini_2004",
+  "2005" = "gini_2005",
+  "2006" = "gini_2006",
+  "2007" = "gini_2007",
+  "2008" = "gini_2008",
+  "2009" = "gini_2009",
+  "2010" = "gini_2010",
+  "2011" = "gini_2011"
+)
+
+m2 <- left_join(select(plot_m2,country),Gini2) # On selectionne les pays à l'aide d'un left_join
+
+
+## Réordonnancement de m2$country
+m2$country <- fct_relevel(
+  m2$country,
+  "PER", "COD", "RUS", "TUR", "VNM", "GRC", "FRA", "ISL"
+)
+
+ggplot(m2,aes(x=year , y =indice, color=country,group=country, na.rm=T)) +
+  geom_point(size =3,na.rm=T) +
+  geom_line(na.rm = T) +
+  ggtitle("Evolution de l'indice de Gini") +
+  xlab("")
+
+
+
+```
+
+Donnez la moyenne, les 5 pays ayant l'indice de Gini le plus élevé et les 5 pays ayant l'indice de Gini le plus faible.
+En quelle position se trouve la France ?
+```{r echo=FALSE}
+mean_gini <-aggregate(indice ~ country, data = Gini2 , FUN = mean) 
+mean_gini <-left_join(mean_gini,select(population,country_name,country)) %>% relocate(country,country_name,indice) 
+slice_max(mean_gini,indice,n=5)
+slice_min(mean_gini,indice,n=5)
+
+# La France est en en 35ème position sur les 116 pays étudiés.
+filter(mean_gini,country == "FRA")
+
+```
+
+
+## MISSION 3
+
+On cherche la classe des revenus des parents 
+
+1) On génère un grand nombre *n* suivant une loi Normale
+
+Distribution Normale
+```{r (Yparent)}
+#set.seed(123)
+#Yparent <- rnorm(100*1000,mean = 6069, sd=6060) 
+#Yparent <- Yparent[Yparent>0] # On supprime les valeurs négatives
+#hist(Yparent)
+```
+
+Distribution Log Normale 
+
+```{r log Y parent}
+set.seed(123)
+ln_Y_parent <- rlnorm(100*1000)
+```
+
+2 ) On génère *n* réalisation de l'epsilon de ln(Yparent)
+```{r epsion}
+set.seed(1828)
+epsilon <- rlnorm(100*1000,0,1)
+```
+
+3) Calculez Ychild pour une valeur fictive, Pj = 0.9
+
+ ln_y_parent
+
+```{r}
+Ychild <- (0.9*ln_Y_parent)+epsilon
+Ychild <- exp(Ychild)
+
+```
+
+
+
+
+4) calculez les quantiles C.child et C.parent 
+
+```{r quantile C.child C.parent}
+# quantile(x, probs = seq(0, 1, 1/100))   # Percentiles
+C_child <- quantile(Ychild, probs = seq(0, 1, 1/100))   # Percentiles
+C_parent <- quantile(ln_Y_parent, probs = seq(0, 1, 1/100))   # Percentiles
+dt <- data.frame(ln_Y_parent,c_i_parent=as.numeric(cut(ln_Y_parent, breaks = C_parent, include.lowest = TRUE)))
+dt2 <- data.frame(Ychild,c_i_child=as.numeric(cut(Ychild, breaks = C_child, include.lowest = TRUE)))
+
+
+```
+
+5) Estimez pour chaque Ci de Child la distribution conditionnelle de Ci de Parent soit P(ci_child)/P(Ci_parent)
+
+```{r}
+# d1 <- data.frame(ln_Y_parent,Ychild)
+dis <- data.frame(dt,dt2) # On créer un data frame avec les percentiles C_child + C_parent
+didi <- dis %>% count(c_i_parent,c_i_child)
+didi <- mutate(didi,n=n/100000) %>% rename(prob=n)
+
+
+ggplot(didi) +
+    aes(x=c_i_parent,y=prob) +
+    geom_point() +
+    ggtitle("Distribution conditionnelle Ci parent") +
+    ylab("probabilité revenu de l'enfant") +
+    xlab("quantile revenus parents")
+
+
+```
+
+Distribution conditionelle format table
+
+```{r distribution conditionnelle}
+condi <- xtabs(~c_i_child + c_i_parent, didi) 
+condi <- prop.table(condi,1) 
+barplot(prop.table(condi,1))
+```
+
+
+8) Nous allons maintenant travailler sur un nouvel échantillon. Celui-ci sera créé à partir de la
+WID. Pour chaque individu de la Wold Income Distribution, créez-en 499 "clones". La taille de
+votre nouvel échantillon sera donc 500 fois plus grand que celui de la Wold Income
+Distribution
+
+```{r parent }
+df3 <- rename(df,c_i_parent=quantile,Yparent=income,mj=gdpppp)
+df3 <- select(df3,-year_survey,-nb_quantiles)
+```
+
+
+```{r df4 dataframe pour mission 4}
+df4 <- rename(df,mj=gdpppp,c_i_child=quantile,Ychild=income)
+df4 <- left_join(df4,mean_gini) %>% rename(gj=indice)
+df4 <- relocate(df4,country,country_name)
+df4 <- select(df4,-nb_quantiles,-country_name,-year_survey) # on simplifie
+head(df4)
+```
+Dans un premier temps on veut que les deux dataframe aient la même longueur
+
+```{r}
+x1 <- 11599/7748
+x2 <- sample_frac(didi,size = x1,replace = T,weight = prob) # on génère un échantillon de la taille de df4,pondéré par les proba conditionnelles trouvées précédements 
+df5 <- left_join(df4,x2)
+df5 <- select(df5,-c_i_child) # On supprimer C_i_child  
+write.csv(x = df5, file = "P7_df5.csv")
+```
+
+```{r}
+filter(df5,country=="FRA") %>% view()
+```
+
+
+
+Notre matériel n'est pas assez puissant > google collab !
+
+write.csv(x = monDataframe, file = "monFichier.csv")
+
+```{r}
+write.csv(x = df4, file = "P7_df4.csv")
+```
+
+Coefficient pour multiplier notre df ==> 500 fois plus grand
+```{r}
+x3 <- (11599*500)/1345365
+x3
+```
+Problème d'importation avec google collab, notre dataframe est 115 fois plus grand que le df original
+
+Théoriquement ça ne devrait pas poser de problème puisqu'il respect les proportions des distributions conditionnelles c_i_parent et c_i_child.
+
+Nous allons travailler avec pour la suite du projet, Mission 4.
+
+```{r modèle pour générer les c_i_parents}
+#z <- (11599*5)/7748 # lenght(df)*500 diviser par lenght(didi)
+# zz <- sample_frac(didi, size = z,replace = T,weight = prob)
+# df5 <- left_join(zz,df4)
+```
+
+
+
+
+
+## MISSION 4
+
+Pour cette mission 4, nous chercherons à expliquer le revenu des individus en fonction de plusieurs variables explicatives : le pays de l'individu, l'indice de Gini de ce pays, la classe de revenus des parents, etc.
+
+
+### 1. ANOVA
+
+Appliquez une ANOVA sur vos données, en n’incluant comme variable explicative que le pays de l’individu.
+
+Analysez la performance du modèle.
+
+
+On ajoute une version log à nos variables
+
+```{r}
+df5 <- select(df5,-prob)
+df5 <- na.omit(df5)
+df5 <- mutate(df5,log_Ychild=log(Ychild),log_mj=log(mj))
+```
+
+```{r librairie, warning=FALSE}
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(car)
+```
+
+
+Boxplot normal vs log 
+```{r}
+boxplot(mj ~ country,data=df5) 
+boxplot(log_mj ~ country,data=df5) # Log
+```
+Version log plus performante
+présence d'un pays Outlier ?
+
+```{r}
+filter(df5, country=="FJI") %>%
+  slice(1)
+```
+
+Il s'agit des Fidji , il semble y avoir une erreur avec ce pays... Il devrait être en deçà de la moyenne mondiale...
+
+source : https://www.journaldunet.com/business/salaire/fidji/pays-fji
+
+On supprime le pays 
+
+```{r}
+df5 <- filter(df5,country !="FJI")
+```
+
+
+
+
+Anova
+```{r anova}
+a1 <-  aov(Ychild + gj + mj + c_i_parent ~ country, data = df5)
+summary(a1)
+
+```
+```{r anova log}
+loga1 <-  aov(log_Ychild + gj + log_mj + c_i_parent ~ country, data = df5)
+summary(loga1)
+```
+
+
+
+P-value < 0.05  
+H(a) : Il y a une difference significative entre les moyennes des variables.
+Les moyennes des variables diffèrent en fonction des pays.
+Autrement dit la répartition des revenus et des inégalités varient en fonction des zones géographiques.
+
+
+
+```{r}
+par(mfrow=c(2,2))
+plot(a1)
+par(mfrow=c(1,1))
+```
+Distribution des quantiles n'est pas la même :  les pays n'ont pas les mêmes distributions de c_i_parents à titre d'exemple
+
+Présence de *"outlier"* ? : attention on a vu précédemment que la distribution des revenus est très inégalitaire 
+
+On test la normalité des résidus :
+
+```{r warning=FALSE}
+# Extract the residuals
+aov_residuals <- residuals(object = a1 )
+# Run K.S test
+ks.test(aov_residuals,"pnorm") # suit une loi Normale ?
+```
+
+Explication de la variance avec une regression linéaire
+
+```{r}
+lma1 <-  lm(Ychild + gj + mj + c_i_parent ~ country, data = df5)
+summary(lma1)
+```
+
+On a un R-squared très élevé.
+On peut voir qu'il y a un lien entre pays et revenu.
+
+
+
+
+On simplifie notre modèle Revenu en fonction du pays 
+```{r}
+a2 <-  aov(Ychild  ~ country, data = df5)
+summary(a2)
+```
+H(a) : Même résultat
+
+```{r warning=FALSE}
+# Extract the residuals
+aov_residuals2 <- residuals(object = a2 )
+# Run K.S test
+ks.test(aov_residuals2,"pnorm") # suit une loi Normale ?
+```
+Même résultat !
+
+
+```{r}
+library(lmtest)
+bptest(a1) 
+```
+On peut rejetter l'hypothèse d'homoscédasticité des résidus.
+
+
+
+
+
+### 2. Régression linéaire 
+
+
+
+#### A.Ychild 
+
+
+```{r}
+prest.lm1 <- lm(Ychild~mj+gj, data=df5) 
+```
+
+```{r}
+summary(prest.lm1)
+```
+Résultat contre intuitif : lorque le revenu moyen augmente , le revenus des enfants baissent ?
+Regardons la version log plus tard 
+
+```{r}
+acf(residuals(prest.lm1), main="prest.lm1") 
+```
+
+Les deux variables gj et mj semblent être auto corrélées dans ce modèle 
+
+
+
+#### B Log_Ychild
+
+```{r}
+prest.lm2 <- lm(log_Ychild~log_mj+gj, data=df5)
+summary(prest.lm2)
+```
+
+Corrélation plus crédible en format logarithmique :
+
+Lorsque log_mj augmente de 1 pts : log_Ychild augmente de 0.66 pts
+
+Tandis que lorsque gj augmente de 1 pts log_Ychild diminue de 0.03 pts
+
+Les residus semblent suivrent une loi Normale : Median des residus est proche de zéro 
+
+P value est inférieure au seuil de 0.05 : On peut supposer alors à un lien linéaire entre nos variables explicatives et prédictive.
+
+
+```{r}
+vcov(prest.lm2) # Matrice covariance
+```
+```{r}
+cor.test(df5$log_mj,df5$gj)
+```
+
+
+
+```{r}
+plot(prest.lm2,2) # Droite de Henry
+```
+
+```{r}
+plot(prest.lm2, 3)
+```
+
+```{r}
+acf(residuals(prest.lm2), main="prest.lm2") 
+```
+
+Résidus auto corrélés : mj, gj n'explique pas tout les dsitributions de revenus
+
+Autres facteurs : Chance , succès , travail , santé  ?
+
+Ou encore les parents ? :)
+
+```{r}
+vif(prest.lm2)
+```
+Vif inférieur à 10 : pas de multicoliéarité à corriger 
+
+```{r}
+aov(prest.lm2)
+```
+Le pourcentage d'explication de la variance de nos variables
+```{r}
+sum_variance_lm2 <- 1254103.2+69026.9 +1169325.1
+1254103.2/sum_variance_lm2 #  0.5031598
+69026.9/sum_variance_lm2 #   0.02769434
+1169325.1/sum_variance_lm2 #0.4691459
+```
+Log_mj : 50.31 %
+gj     : 02.76 %
+Résidus: 46.91 %
+
+
+
+#### C. C_i_parent pour améliorer notre régression linéaire 
+
+```{r}
+prest.lm3 <- lm(log_Ychild~log_mj+gj+c_i_parent, data=df5)
+summary(prest.lm3)
+```
+
+RSE en baisse   0.9574 -> 0.8549 
+R2 en hausse    0.5309 -> 0.6259  
+
+Ces indicateurs peuvent être signe que le modèle est plus performant.
+On cherche notemment un residu le faible  possible.
+
+Le revenu augmente avec c_i_parent et mj ( classe des revnus des parents ,et revenu moyen du pays j)
+Il baisse avec une augmentation de gj, indice de gini du pays j.
+
+
+
+Question : En observant le coefficient de régression associé à l’indice de Gini, peut-on affirmer que le
+fait de vivre dans un pays plus inégalitaire favorise plus de personnes qu’il n’en défavorise ?
+
+Non , on ne peut pas affirmer cela. 
+
+1) Ce que nous dit la regression c'est que pour 1pts de Gini en plus on a -0.02954 pts de revenu.
+Notre modèle nous dit que les inégalités peuvent s'accroître relativement plus qu'une baisse du revenu.
+
+2) On parle ici uniquement de revenu et non de capital/patrimoine.
+
+On ne peut pas généraliser.
+
+
+```{r}
+cor.test(df5$c_i_parent,df5$log_mj)
+```
+
+```{r}
+ggplot(df5, aes(x=log_mj+gj+c_i_parent, y=log_Ychild))+
+      geom_point()+
+      geom_smooth(colour="red", method="lm", fill="red") +
+      xlab("Parent,Pays")+
+      ylab("Revenu") +
+      theme_classic()
+```
+```{r}
+par(mfrow=c(2,2))
+plot(prest.lm3)
+par(mfrow=c(1,1))
+```
+
+
+
+```{r}
+vif(prest.lm3)
+```
+
+```{r}
+aov(prest.lm3)
+```
+ Pourcentage de l'explication de la variance
+```{r}
+sum_variance_lm3 <- 1254103.2+69026.9+236995.6+932329.5
+1254103.2/sum_variance_lm3 # log_mj
+ 69026.9/sum_variance_lm3 # gj
+ 236995.6  /sum_variance_lm3 # c_i_parent 
+ 932329.5/sum_variance_lm3 # residus
+```
+log_mj     : 50.31 %
+gj         : 02.76 %
+c_i_parent : 09.50 %
+Résidus    : 37.40 %
+
+C_i_parent explique presque 10 % de notre modèle 
+Ce dernier s'est amélioré.
+On peut constater que la somme des residus en en baisse.
+
+On a globalement un meilleur modèle avec l'ajout de la variable c_i_parent.
