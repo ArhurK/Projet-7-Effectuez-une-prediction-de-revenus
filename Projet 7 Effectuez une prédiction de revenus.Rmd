@@ -85,16 +85,19 @@ population[,3:10] <- lapply(population[,3:10],function(x) as.numeric(as.characte
 
 Résumez les données utilisées :
 
-#### année(s) des données utilisées ; 2004 à 2011 (aucune donnée pour 2005)
+1. année(s) des données utilisées ; 2004 à 2011 (aucune donnée pour 2005)
 
-####  nombre de pays présents ; 116 pays 
+2. nombre de pays présents ; 116 pays 
 
-####  population couverte par l'analyse (en termes de pourcentage de la population mondiale). Près de 92 % de la population mondiale de 2004 à 2011
+3. population couverte par l'analyse (en termes de pourcentage de la population mondiale). Près de 92 % de la population mondiale de 2004 à 2011
 
-###De quel type de quantiles s'agit-il (quartiles, déciles, etc.) ?
-Échantillonner une population en utilisant des quantiles est-il selon vous une bonne méthode ? Pourquoi ?
+*De quel type de quantiles s'agit-il (quartiles, déciles, etc.) ?*
 
 Il s'agit de de percentile 
+
+*Échantillonner une population en utilisant des quantiles est-il selon vous une bonne méthode ? Pourquoi ?*
+
+On peut voir la pertinence de l’analyse avec des percentiles sur le graphique suivant.
 
 ```{r}
 # Exemple FRA revenu/income en fonction des quantiles
@@ -108,13 +111,16 @@ ggplot(filter(df, country=="FRA"))+
 # La France a une variation de revenu homogène jusqu'à un certain point ~ 80% les plus riches augmentent de façon quasi exponantiel.
 
 ```
+Les 1 % des hauts revenus sont très éloignés des 10 % des hauts revenus.
+L'analyse avec des percentiles est pertinante pour mesurer l'écart des revenus en France.
+
 
 #### PPP correspond à la PPA c'est à dire un indicateur de parité de pouvoir d'achat, il s'agit de comparer les pays avec une même devise fictive pour corriger les différences de pouvoir d'achat entre pays.
 
 
 ## MISSION 2
 
-Montrez la diversité des pays en termes de distribution de revenus à l'aide d'un graphique. Celui-ci représentera le revenu moyen (axe des ordonnées, sur une échelle logarithmique) de chacune des classes de revenus (axe des abscisses) pour 5 à 10 pays que vous aurez choisis pour montrer la diversité des cas.
+*Montrez la diversité des pays en termes de distribution de revenus à l'aide d'un graphique. Celui-ci représentera le revenu moyen (axe des ordonnées, sur une échelle logarithmique) de chacune des classes de revenus (axe des abscisses) pour 5 à 10 pays que vous aurez choisis pour montrer la diversité des cas.*
 
 ```{r}
 # On choisit nos pays en regardant les moyennes de revenus
@@ -147,7 +153,7 @@ ggplotly(plot_log)
 
 ```
 
-Représentez la courbe de Lorenz de chacun des pays choisis.
+*Représentez la courbe de Lorenz de chacun des pays choisis.*
 
 ```{r courbe de Lorenz}
 h1 <- plot_m2 %>% filter(country =="ISL") 
@@ -168,7 +174,7 @@ p6 <- plot(Lc(h6$income), main ="Pérou", sub ="indice de Gini =0.47")
 p7 <-  plot(Lc(h7$income), main ="Vietnam", sub ="indice de Gini =0.36")
 p8 <- plot(Lc(h8$income), main ="Congo", sub ="indice de Gini 2004 =0.42")
 ```
-Pour chacun de ces pays, représentez l'évolution de l'indice de Gini au fil des ans.
+*Pour chacun de ces pays, représentez l'évolution de l'indice de Gini au fil des ans.*
 
 ```{r evolution indice de gini}
 Gini2 <- Gini %>% gather(key="country_name",value = new,gini_2004,gini_2005,gini_2006,gini_2007,gini_2008,gini_2009,gini_2010,gini_2011) 
@@ -206,18 +212,19 @@ ggplot(m2,aes(x=year , y =indice, color=country,group=country, na.rm=T)) +
 ```
 
 Donnez la moyenne, les 5 pays ayant l'indice de Gini le plus élevé et les 5 pays ayant l'indice de Gini le plus faible.
+
 En quelle position se trouve la France ?
 ```{r echo=FALSE}
 mean_gini <-aggregate(indice ~ country, data = Gini2 , FUN = mean) 
 mean_gini <-left_join(mean_gini,select(population,country_name,country)) %>% relocate(country,country_name,indice) 
-slice_max(mean_gini,indice,n=5)
+slice_max(mean_gini,indice,n=5) 
 slice_min(mean_gini,indice,n=5)
 
 # La France est en en 35ème position sur les 116 pays étudiés.
 filter(mean_gini,country == "FRA")
 
 ```
-
+La France est en en 35ème position sur les 116 pays étudiés.
 
 ## MISSION 3
 
